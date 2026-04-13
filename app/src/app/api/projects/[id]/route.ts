@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
+import { getSessionUsername, requireAuth } from '@/lib/auth';
 
 type Params = {
   params: Promise<{ id: string }>;
 };
 
-export async function GET(_: Request, { params }: Params) {
+export async function GET(request: Request, { params }: Params) {
+  const authError = requireAuth(request);
+  if (authError) return authError;
+
   const { id } = await params;
 
   try {
@@ -40,6 +44,12 @@ export async function GET(_: Request, { params }: Params) {
 }
 
 export async function PUT(request: Request, { params }: Params) {
+  const authError = requireAuth(request);
+  if (authError) return authError;
+
+  const username = getSessionUsername(request);
+  if (!username) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const { id } = await params;
 
   try {
@@ -65,11 +75,12 @@ export async function PUT(request: Request, { params }: Params) {
         updated_at = NOW()
       WHERE id = $5
         AND lock_token = $6
+        AND locked_by = $7
         AND lock_expires_at > NOW()
-        AND version = $7
+        AND version = $8
       RETURNING *
       `,
-      [projectName, clientName, JSON.stringify(deliveries), JSON.stringify(children), id, lockToken, version]
+      [projectName, clientName, JSON.stringify(deliveries), JSON.stringify(children), id, lockToken, username, version]
     );
 
     if (result.rowCount === 0) {
@@ -87,6 +98,12 @@ export async function PUT(request: Request, { params }: Params) {
 }
 
 export async function DELETE(request: Request, { params }: Params) {
+  const authError = requireAuth(request);
+  if (authError) return authError;
+
+  const username = getSessionUsername(request);
+  if (!username) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const { id } = await params;
 
   try {
@@ -102,14 +119,12 @@ export async function DELETE(request: Request, { params }: Params) {
       DELETE FROM projects
       WHERE id = $1
         AND lock_token = $2
+        AND locked_by = $3
+        AND lock_expires_at > NOW()
       RETURNING id
       `,
-      [id, lockToken]
+      [id, lockToken, username]
     );
-
-    if (result.rowCount === 0) {
-      return NextResponse.json({ error: 'Delete failed. Lock owner mismatch.' }, { status: 409 });
-    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
+import { requireAuth } from '@/lib/auth';
 
 type VendorRow = {
   id?: string;
@@ -17,7 +18,10 @@ function normalizeVendorRow(row: VendorRow) {
   };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const authError = requireAuth(request);
+  if (authError) return authError;
+
   try {
     const result = await pool.query(
       `
@@ -41,6 +45,8 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  const authError = requireAuth(request);
+  if (authError) return authError;
   const client = await pool.connect();
 
   try {
@@ -74,8 +80,16 @@ export async function PUT(request: Request) {
       );
     }
 
+    const vendorIds = vendors.map((row) => row.id);
+
     await client.query('BEGIN');
-    await client.query('DELETE FROM vendors');
+    await client.query(
+      `
+      DELETE FROM vendors
+      WHERE id <> ALL($1::text[])
+      `,
+      [vendorIds]
+    );
 
     for (const vendor of vendors) {
       await client.query(
@@ -89,6 +103,12 @@ export async function PUT(request: Request) {
           updated_at
         )
         VALUES ($1, $2, $3, $4, NOW(), NOW())
+        ON CONFLICT (id) DO UPDATE
+        SET
+          name = EXCLUDED.name,
+          address = EXCLUDED.address,
+          phone = EXCLUDED.phone,
+          updated_at = NOW()
         `,
         [vendor.id, vendor.name, vendor.address, vendor.phone]
       );

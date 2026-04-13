@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
+import { getSessionUsername, requireAuth } from '@/lib/auth';
 
 type Params = {
   params: Promise<{ id: string }>;
@@ -11,14 +12,20 @@ function lockIntervalSql() {
 }
 
 export async function POST(request: Request, { params }: Params) {
+  const authError = requireAuth(request);
+  if (authError) return authError;
+
+  const username = getSessionUsername(request);
+  if (!username) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const { id } = await params;
 
   try {
     const body = await request.json();
-    const { editorName, lockToken } = body ?? {};
+    const { lockToken } = body ?? {};
 
-    if (!editorName || !lockToken) {
-      return NextResponse.json({ error: 'editorName and lockToken are required' }, { status: 400 });
+    if (!lockToken) {
+      return NextResponse.json({ error: 'lockToken is required' }, { status: 400 });
     }
 
     const result = await pool.query(
@@ -27,9 +34,9 @@ export async function POST(request: Request, { params }: Params) {
       SET
         lock_token = $1,
         locked_by = $2,
-        lock_expires_at = NOW() + ($4::interval),
+        lock_expires_at = NOW() + ($3::interval),
         updated_at = NOW()
-      WHERE id = $3
+      WHERE id = $4
         AND (
           lock_expires_at IS NULL
           OR lock_expires_at < NOW()
@@ -37,7 +44,7 @@ export async function POST(request: Request, { params }: Params) {
         )
       RETURNING id, locked_by, lock_expires_at
       `,
-      [lockToken, editorName, id, lockIntervalSql()]
+      [lockToken, username, lockIntervalSql(), id]
     );
 
     if (result.rowCount === 0) {

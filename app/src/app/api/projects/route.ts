@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
+import { requireAuth } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const authError = requireAuth(request);
+  if (authError) return authError;
   try {
     const result = await pool.query(
       `
@@ -39,6 +42,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const authError = requireAuth(request);
+  if (authError) return authError;
+
   try {
     const body = await request.json();
     const { id, projectName, clientName = '', deliveries = [], children = [] } = body ?? {};

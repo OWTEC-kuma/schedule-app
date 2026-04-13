@@ -1437,6 +1437,11 @@ export default function OwtecScheduleTopPreview() {
   const [lockToken, setLockToken] = useState<string | null>(null);
   const [editorName, setEditorName] = useState('');
   const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(true);
+  const [loginUsername, setLoginUsername] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [isLoginLoading, setIsLoginLoading] = useState(false);
 
   const sortedProjects = useMemo(() => sortProjects(projects), [projects]);
   const timelineDays = useMemo(() => buildTimelineDays(sortedProjects), [sortedProjects]);
@@ -1477,91 +1482,109 @@ export default function OwtecScheduleTopPreview() {
   }, [screenMode, sortedProjects, timelineDays]);
 
   useEffect(() => {
-  let mounted = true;
+    let mounted = true;
 
-  async function boot() {
-    try {
-      const [projectsResponse, vendorsResponse, clientsResponse] = await Promise.all([
-        fetch('/api/projects', { cache: 'no-store' }),
-        fetch('/api/vendors', { cache: 'no-store' }),
-        fetch('/api/clients', { cache: 'no-store' }),
-      ]);
+    async function boot() {
+      try {
+        const [projectsResponse, vendorsResponse, clientsResponse] = await Promise.all([
+          fetch('/api/projects', { cache: 'no-store' }),
+          fetch('/api/vendors', { cache: 'no-store' }),
+          fetch('/api/clients', { cache: 'no-store' }),
+        ]);
 
-      if (!projectsResponse.ok) {
-        throw new Error('Failed to load projects');
-      }
-      if (!vendorsResponse.ok) {
-        throw new Error('Failed to load vendors');
-      }
-      if (!clientsResponse.ok) {
-        throw new Error('Failed to load clients');
-      }
+        if (
+          projectsResponse.status === 401 ||
+          projectsResponse.status === 403 ||
+          vendorsResponse.status === 401 ||
+          vendorsResponse.status === 403 ||
+          clientsResponse.status === 401 ||
+          clientsResponse.status === 403
+        ) {
+          if (mounted) {
+            setIsAuthenticated(false);
+          }
+          return;
+        }
 
-      const projectsData = await projectsResponse.json();
-      const vendorsData = await vendorsResponse.json();
-      const clientsData = await clientsResponse.json();
+        if (!projectsResponse.ok) {
+          throw new Error('Failed to load projects');
+        }
+        if (!vendorsResponse.ok) {
+          throw new Error('Failed to load vendors');
+        }
+        if (!clientsResponse.ok) {
+          throw new Error('Failed to load clients');
+        }
 
-      if (!mounted) return;
+        const projectsData = await projectsResponse.json();
+        const vendorsData = await vendorsResponse.json();
+        const clientsData = await clientsResponse.json();
 
-      const nextProjects: Project[] = Array.isArray(projectsData.projects)
-        ? projectsData.projects.map((row: any) => ({
-            id: String(row.id ?? ''),
-            projectName: String(row.project_name ?? ''),
-            deliveries: Array.isArray(row.deliveries) ? row.deliveries : [],
-            children: Array.isArray(row.children) ? row.children : [],
-          }))
-        : [];
+        if (!mounted) return;
 
-      const nextVendors: VendorEntry[] = Array.isArray(vendorsData.vendors)
-        ? vendorsData.vendors.map((row: any) => ({
-            id: String(row.id ?? ''),
-            name: String(row.name ?? ''),
-            address: String(row.address ?? ''),
-            phone: String(row.phone ?? ''),
-          }))
-        : [];
+        const nextProjects: Project[] = Array.isArray(projectsData.projects)
+          ? projectsData.projects.map((row: any) => ({
+              id: String(row.id ?? ''),
+              projectName: String(row.project_name ?? ''),
+              deliveries: Array.isArray(row.deliveries) ? row.deliveries : [],
+              children: Array.isArray(row.children) ? row.children : [],
+            }))
+          : [];
 
-      const nextClients: ClientEntry[] = Array.isArray(clientsData.clients)
-        ? clientsData.clients.map((row: any) => ({
-            id: String(row.id ?? ''),
-            name: String(row.name ?? ''),
-            address: String(row.address ?? ''),
-            phone: String(row.phone ?? ''),
-          }))
-        : [];
+        const nextVendors: VendorEntry[] = Array.isArray(vendorsData.vendors)
+          ? vendorsData.vendors.map((row: any) => ({
+              id: String(row.id ?? ''),
+              name: String(row.name ?? ''),
+              address: String(row.address ?? ''),
+              phone: String(row.phone ?? ''),
+            }))
+          : [];
 
-      setProjects(nextProjects);
-      setVendors(nextVendors);
-      setVendorDraft(cloneVendors(nextVendors));
-      setClients(nextClients);
-      setClientDraft(cloneClients(nextClients));
+        const nextClients: ClientEntry[] = Array.isArray(clientsData.clients)
+          ? clientsData.clients.map((row: any) => ({
+              id: String(row.id ?? ''),
+              name: String(row.name ?? ''),
+              address: String(row.address ?? ''),
+              phone: String(row.phone ?? ''),
+            }))
+          : [];
 
-      if (nextProjects.length > 0) {
-        setSelectedProjectId(nextProjects[0].id);
-        setDraft(deepClone(nextProjects[0]));
-        setProjectInitialSnapshot(JSON.stringify(nextProjects[0]));
-      }
+        setProjects(nextProjects);
+        setVendors(nextVendors);
+        setVendorDraft(cloneVendors(nextVendors));
+        setClients(nextClients);
+        setClientDraft(cloneClients(nextClients));
 
-      setVendorInitialSnapshot(JSON.stringify(nextVendors));
-      setClientInitialSnapshot(JSON.stringify(nextClients));
-    } catch (error) {
-      console.error(error);
-    } finally {
-      if (mounted) {
-        setIsBootLoading(false);
+        if (nextProjects.length > 0) {
+          setSelectedProjectId(nextProjects[0].id);
+          setDraft(deepClone(nextProjects[0]));
+          setProjectInitialSnapshot(JSON.stringify(nextProjects[0]));
+        }
+
+        setVendorInitialSnapshot(JSON.stringify(nextVendors));
+        setClientInitialSnapshot(JSON.stringify(nextClients));
+      } catch (error) {
+        console.error(error);
+      } finally {
+        if (mounted) {
+          setIsBootLoading(false);
+        }
       }
     }
-  }
 
-  boot();
+    boot();
 
-  return () => {
-    mounted = false;
-  };
-}, []);
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const loadProjects = useCallback(async () => {
     const response = await fetch('/api/projects', { cache: 'no-store' });
+    if (response.status === 401 || response.status === 403) {
+      setIsAuthenticated(false);
+      throw new Error('Unauthorized');
+    }
     if (!response.ok) {
       throw new Error('プロジェクト一覧の読み込みに失敗しました。');
     }
@@ -1569,6 +1592,35 @@ export default function OwtecScheduleTopPreview() {
     const nextProjects = Array.isArray(data.projects) ? data.projects.map((row: ApiProjectRow) => mapApiProject(row)) : [];
     setProjects(sortProjects(nextProjects));
   }, []);
+
+  const handleLogin = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setAuthError(null);
+    setIsLoginLoading(true);
+
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: loginUsername, password: loginPassword }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        setAuthError(data.error || 'ログインに失敗しました。');
+        return;
+      }
+
+      setIsAuthenticated(true);
+      setAuthError(null);
+      window.location.reload();
+    } catch (error) {
+      console.error(error);
+      setAuthError('ログインに失敗しました。');
+    } finally {
+      setIsLoginLoading(false);
+    }
+  }, [loginUsername, loginPassword]);
 
   useEffect(() => {
     const savedEditorName = window.localStorage.getItem(EDITOR_NAME_STORAGE_KEY);
@@ -1888,6 +1940,39 @@ export default function OwtecScheduleTopPreview() {
     await releaseCurrentLock();
     setScreenMode('list');
   }, [releaseCurrentLock]);
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-50 p-6">
+        <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+          <h1 className="mb-4 text-xl font-semibold">ログイン</h1>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <Label htmlFor="loginUsername">ユーザー名</Label>
+              <Input
+                id="loginUsername"
+                value={loginUsername}
+                onChange={(event) => setLoginUsername(event.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="loginPassword">パスワード</Label>
+              <Input
+                id="loginPassword"
+                type="password"
+                value={loginPassword}
+                onChange={(event) => setLoginPassword(event.target.value)}
+              />
+            </div>
+            {authError ? <p className="text-sm text-red-600">{authError}</p> : null}
+            <Button type="submit" disabled={isLoginLoading}>
+              {isLoginLoading ? 'ログイン中...' : 'ログイン'}
+            </Button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

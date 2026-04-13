@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
+import { getSessionUsername, requireAuth } from '@/lib/auth';
 
 type Params = {
   params: Promise<{ id: string }>;
@@ -11,6 +12,12 @@ function lockIntervalSql() {
 }
 
 export async function POST(request: Request, { params }: Params) {
+  const authError = requireAuth(request);
+  if (authError) return authError;
+
+  const username = getSessionUsername(request);
+  if (!username) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const { id } = await params;
 
   try {
@@ -29,10 +36,11 @@ export async function POST(request: Request, { params }: Params) {
         updated_at = NOW()
       WHERE id = $1
         AND lock_token = $2
+        AND locked_by = $4
         AND lock_expires_at > NOW()
       RETURNING id, lock_expires_at
       `,
-      [id, lockToken, lockIntervalSql()]
+      [id, lockToken, lockIntervalSql(), username]
     );
 
     if (result.rowCount === 0) {
