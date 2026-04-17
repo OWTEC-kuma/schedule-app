@@ -12,10 +12,10 @@ function lockIntervalSql() {
 }
 
 export async function POST(request: Request, { params }: Params) {
-  const authError = requireAuth(request);
+  const authError = await requireAuth(request);
   if (authError) return authError;
 
-  const username = getSessionUsername(request);
+  const username = await getSessionUsername(request);
   if (!username) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;

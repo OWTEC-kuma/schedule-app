@@ -1,15 +1,14 @@
 import { Pool } from 'pg';
 
-const connectionString = process.env.DATABASE_URL?.trim();
+const connectionString = (process.env.SAVED_DATA_DATABASE_URL ?? process.env.DATABASE_URL)?.trim();
 
 if (!connectionString) {
   throw new Error(
-    'DATABASE_URL is not set. Set process.env.DATABASE_URL to your PostgreSQL connection string.'
+    'SAVED_DATA_DATABASE_URL or DATABASE_URL is not set. Set one of these environment variables to your PostgreSQL connection string.'
   );
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var __owtecPool: Pool | undefined;
 }
 

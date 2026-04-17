@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Building2, CalendarDays, PencilLine, Plus, Save, Trash2 } from 'lucide-react';
+import { ArrowLeft, Building2, CalendarDays, LogOut, PencilLine, Plus, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -1422,8 +1423,10 @@ function ProjectEditor({
 }
 
 export default function OwtecScheduleTopPreview() {
+  const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [isBootLoading, setIsBootLoading] = useState(true);
+  const [logoutLoading, setLogoutLoading] = useState(false);
   const [vendors, setVendors] = useState<VendorEntry[]>(initialVendors);
   const [vendorDraft, setVendorDraft] = useState<VendorEntry[]>(cloneVendors(initialVendors));
   const [clients, setClients] = useState<ClientEntry[]>(initialClients);
@@ -1437,14 +1440,20 @@ export default function OwtecScheduleTopPreview() {
   const [lockToken, setLockToken] = useState<string | null>(null);
   const [editorName, setEditorName] = useState('');
   const [loading, setLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(true);
-  const [loginUsername, setLoginUsername] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [isLoginLoading, setIsLoginLoading] = useState(false);
 
   const sortedProjects = useMemo(() => sortProjects(projects), [projects]);
   const timelineDays = useMemo(() => buildTimelineDays(sortedProjects), [sortedProjects]);
+
+  const handleLogout = useCallback(async () => {
+    setLogoutLoading(true);
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (error) {
+      console.error('Logout failed', error);
+    } finally {
+      router.push('/login');
+    }
+  }, [router]);
   const timelineWidth = useMemo(() => timelineDays.length * DAY_COLUMN_WIDTH, [timelineDays]);
   const calendarScrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -1469,122 +1478,106 @@ export default function OwtecScheduleTopPreview() {
 
     const nextProject = sortedProjects.find((project) => getEarliestDeliveryTime(project) >= today.getTime());
     if (nextProject) {
-      const rowEl = calendarScrollRef.current.querySelector(`[data-project-id="${nextProject.id}"]`) as HTMLElement | null;
-      if (rowEl) {
-        const headerHeight = HEADER_MONTH_HEIGHT + HEADER_DAY_HEIGHT;
-        const extraOffset = HEADER_DAY_HEIGHT;
+      window.requestAnimationFrame(() => {
+        if (!calendarScrollRef.current) return;
+        const rowEl = calendarScrollRef.current.querySelector(`[data-project-id="${nextProject.id}"]`) as HTMLElement | null;
+        if (!rowEl) return;
+        const headerHeight = HEADER_MONTH_HEIGHT + HEADER_DAY_HEIGHT + 8;
+        const extraOffset = 32;
         const containerRect = calendarScrollRef.current.getBoundingClientRect();
         const rowRect = rowEl.getBoundingClientRect();
         const targetScrollTop = calendarScrollRef.current.scrollTop + (rowRect.top - containerRect.top) - headerHeight - extraOffset;
         calendarScrollRef.current.scrollTop = Math.max(0, targetScrollTop);
-      }
+      });
     }
   }, [screenMode, sortedProjects, timelineDays]);
 
   useEffect(() => {
-    let mounted = true;
+  let mounted = true;
 
-    async function boot() {
-      try {
-        const [projectsResponse, vendorsResponse, clientsResponse] = await Promise.all([
-          fetch('/api/projects', { cache: 'no-store' }),
-          fetch('/api/vendors', { cache: 'no-store' }),
-          fetch('/api/clients', { cache: 'no-store' }),
-        ]);
+  async function boot() {
+    try {
+      const [projectsResponse, vendorsResponse, clientsResponse] = await Promise.all([
+        fetch('/api/projects', { cache: 'no-store' }),
+        fetch('/api/vendors', { cache: 'no-store' }),
+        fetch('/api/clients', { cache: 'no-store' }),
+      ]);
 
-        if (
-          projectsResponse.status === 401 ||
-          projectsResponse.status === 403 ||
-          vendorsResponse.status === 401 ||
-          vendorsResponse.status === 403 ||
-          clientsResponse.status === 401 ||
-          clientsResponse.status === 403
-        ) {
-          if (mounted) {
-            setIsAuthenticated(false);
-          }
-          return;
-        }
+      if (!projectsResponse.ok) {
+        throw new Error('Failed to load projects');
+      }
+      if (!vendorsResponse.ok) {
+        throw new Error('Failed to load vendors');
+      }
+      if (!clientsResponse.ok) {
+        throw new Error('Failed to load clients');
+      }
 
-        if (!projectsResponse.ok) {
-          throw new Error('Failed to load projects');
-        }
-        if (!vendorsResponse.ok) {
-          throw new Error('Failed to load vendors');
-        }
-        if (!clientsResponse.ok) {
-          throw new Error('Failed to load clients');
-        }
+      const projectsData = await projectsResponse.json();
+      const vendorsData = await vendorsResponse.json();
+      const clientsData = await clientsResponse.json();
 
-        const projectsData = await projectsResponse.json();
-        const vendorsData = await vendorsResponse.json();
-        const clientsData = await clientsResponse.json();
+      if (!mounted) return;
 
-        if (!mounted) return;
+      const nextProjects: Project[] = Array.isArray(projectsData.projects)
+        ? projectsData.projects.map((row: any) => ({
+            id: String(row.id ?? ''),
+            projectName: String(row.project_name ?? ''),
+            deliveries: Array.isArray(row.deliveries) ? row.deliveries : [],
+            children: Array.isArray(row.children) ? row.children : [],
+          }))
+        : [];
 
-        const nextProjects: Project[] = Array.isArray(projectsData.projects)
-          ? projectsData.projects.map((row: any) => ({
-              id: String(row.id ?? ''),
-              projectName: String(row.project_name ?? ''),
-              deliveries: Array.isArray(row.deliveries) ? row.deliveries : [],
-              children: Array.isArray(row.children) ? row.children : [],
-            }))
-          : [];
+      const nextVendors: VendorEntry[] = Array.isArray(vendorsData.vendors)
+        ? vendorsData.vendors.map((row: any) => ({
+            id: String(row.id ?? ''),
+            name: String(row.name ?? ''),
+            address: String(row.address ?? ''),
+            phone: String(row.phone ?? ''),
+          }))
+        : [];
 
-        const nextVendors: VendorEntry[] = Array.isArray(vendorsData.vendors)
-          ? vendorsData.vendors.map((row: any) => ({
-              id: String(row.id ?? ''),
-              name: String(row.name ?? ''),
-              address: String(row.address ?? ''),
-              phone: String(row.phone ?? ''),
-            }))
-          : [];
+      const nextClients: ClientEntry[] = Array.isArray(clientsData.clients)
+        ? clientsData.clients.map((row: any) => ({
+            id: String(row.id ?? ''),
+            name: String(row.name ?? ''),
+            address: String(row.address ?? ''),
+            phone: String(row.phone ?? ''),
+          }))
+        : [];
 
-        const nextClients: ClientEntry[] = Array.isArray(clientsData.clients)
-          ? clientsData.clients.map((row: any) => ({
-              id: String(row.id ?? ''),
-              name: String(row.name ?? ''),
-              address: String(row.address ?? ''),
-              phone: String(row.phone ?? ''),
-            }))
-          : [];
+      setProjects(nextProjects);
+      setVendors(nextVendors);
+      setVendorDraft(cloneVendors(nextVendors));
+      setClients(nextClients);
+      setClientDraft(cloneClients(nextClients));
 
-        setProjects(nextProjects);
-        setVendors(nextVendors);
-        setVendorDraft(cloneVendors(nextVendors));
-        setClients(nextClients);
-        setClientDraft(cloneClients(nextClients));
+      if (nextProjects.length > 0) {
+        setSelectedProjectId(nextProjects[0].id);
+        setDraft(deepClone(nextProjects[0]));
+        setProjectInitialSnapshot(JSON.stringify(nextProjects[0]));
+      }
 
-        if (nextProjects.length > 0) {
-          setSelectedProjectId(nextProjects[0].id);
-          setDraft(deepClone(nextProjects[0]));
-          setProjectInitialSnapshot(JSON.stringify(nextProjects[0]));
-        }
-
-        setVendorInitialSnapshot(JSON.stringify(nextVendors));
-        setClientInitialSnapshot(JSON.stringify(nextClients));
-      } catch (error) {
-        console.error(error);
-      } finally {
-        if (mounted) {
-          setIsBootLoading(false);
-        }
+      setVendorInitialSnapshot(JSON.stringify(nextVendors));
+      setClientInitialSnapshot(JSON.stringify(nextClients));
+    } catch (error) {
+      console.error(error);
+    } finally {
+      if (mounted) {
+        setIsBootLoading(false);
       }
     }
+  }
 
-    boot();
+  boot();
 
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  return () => {
+    mounted = false;
+  };
+}, []);
 
   const loadProjects = useCallback(async () => {
     const response = await fetch('/api/projects', { cache: 'no-store' });
-    if (response.status === 401 || response.status === 403) {
-      setIsAuthenticated(false);
-      throw new Error('Unauthorized');
-    }
     if (!response.ok) {
       throw new Error('プロジェクト一覧の読み込みに失敗しました。');
     }
@@ -1592,35 +1585,6 @@ export default function OwtecScheduleTopPreview() {
     const nextProjects = Array.isArray(data.projects) ? data.projects.map((row: ApiProjectRow) => mapApiProject(row)) : [];
     setProjects(sortProjects(nextProjects));
   }, []);
-
-  const handleLogin = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setAuthError(null);
-    setIsLoginLoading(true);
-
-    try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: loginUsername, password: loginPassword }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        setAuthError(data.error || 'ログインに失敗しました。');
-        return;
-      }
-
-      setIsAuthenticated(true);
-      setAuthError(null);
-      window.location.reload();
-    } catch (error) {
-      console.error(error);
-      setAuthError('ログインに失敗しました。');
-    } finally {
-      setIsLoginLoading(false);
-    }
-  }, [loginUsername, loginPassword]);
 
   useEffect(() => {
     const savedEditorName = window.localStorage.getItem(EDITOR_NAME_STORAGE_KEY);
@@ -1941,39 +1905,6 @@ export default function OwtecScheduleTopPreview() {
     setScreenMode('list');
   }, [releaseCurrentLock]);
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-slate-50 p-6">
-        <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-          <h1 className="mb-4 text-xl font-semibold">ログイン</h1>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <Label htmlFor="loginUsername">ユーザー名</Label>
-              <Input
-                id="loginUsername"
-                value={loginUsername}
-                onChange={(event) => setLoginUsername(event.target.value)}
-              />
-            </div>
-            <div>
-              <Label htmlFor="loginPassword">パスワード</Label>
-              <Input
-                id="loginPassword"
-                type="password"
-                value={loginPassword}
-                onChange={(event) => setLoginPassword(event.target.value)}
-              />
-            </div>
-            {authError ? <p className="text-sm text-red-600">{authError}</p> : null}
-            <Button type="submit" disabled={isLoginLoading}>
-              {isLoginLoading ? 'ログイン中...' : 'ログイン'}
-            </Button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 p-6">
@@ -2090,7 +2021,7 @@ if (isBootLoading) {
               }}
               className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700"
             >
-              <option value="">メニュー</option>
+              <option value="">表示メニュー</option>
               <option value="monthlyDeliveries">月別納品リスト</option>
               <option value="clientDeliveries">クライアント別リスト</option>
             </select>
@@ -2101,6 +2032,10 @@ if (isBootLoading) {
             <Button type="button" variant="outline" className="rounded-xl px-4" onClick={openVendorManager}>
               <Building2 className="mr-2 h-4 w-4" />
               業者リスト
+            </Button>
+            <Button type="button" variant="outline" className="rounded-xl px-4" onClick={handleLogout} disabled={logoutLoading}>
+              <LogOut className="mr-2 h-4 w-4" />
+              ログアウト
             </Button>
             <Button onClick={openCreate} className="rounded-xl px-4">
               <Plus className="mr-2 h-4 w-4" />

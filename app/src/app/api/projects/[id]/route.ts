@@ -7,7 +7,7 @@ type Params = {
 };
 
 export async function GET(request: Request, { params }: Params) {
-  const authError = requireAuth(request);
+  const authError = await requireAuth(request);
   if (authError) return authError;
 
   const { id } = await params;
@@ -44,10 +44,10 @@ export async function GET(request: Request, { params }: Params) {
 }
 
 export async function PUT(request: Request, { params }: Params) {
-  const authError = requireAuth(request);
+  const authError = await requireAuth(request);
   if (authError) return authError;
 
-  const username = getSessionUsername(request);
+  const username = await getSessionUsername(request);
   if (!username) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;
@@ -98,10 +98,10 @@ export async function PUT(request: Request, { params }: Params) {
 }
 
 export async function DELETE(request: Request, { params }: Params) {
-  const authError = requireAuth(request);
+  const authError = await requireAuth(request);
   if (authError) return authError;
 
-  const username = getSessionUsername(request);
+  const username = await getSessionUsername(request);
   if (!username) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;
@@ -125,6 +125,10 @@ export async function DELETE(request: Request, { params }: Params) {
       `,
       [id, lockToken, username]
     );
+
+    if (result.rowCount === 0) {
+      return NextResponse.json({ error: 'Delete failed. Lock owner mismatch or no active lock.' }, { status: 409 });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {

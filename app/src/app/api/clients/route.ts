@@ -19,7 +19,7 @@ function normalizeClientRow(row: ClientRow) {
 }
 
 export async function GET(request: Request) {
-  const authError = requireAuth(request);
+  const authError = await requireAuth(request);
   if (authError) return authError;
 
   try {
@@ -45,7 +45,7 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
-  const authError = requireAuth(request);
+  const authError = await requireAuth(request);
   if (authError) return authError;
   const client = await pool.connect();
 

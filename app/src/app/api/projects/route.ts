@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAuthOrApiToken } from '@/lib/auth';
 
 export async function GET(request: Request) {
-  const authError = requireAuth(request);
+  const authError = await requireAuthOrApiToken(request);
   if (authError) return authError;
   try {
     const result = await pool.query(
@@ -42,7 +42,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const authError = requireAuth(request);
+  const authError = await requireAuthOrApiToken(request);
   if (authError) return authError;
 
   try {

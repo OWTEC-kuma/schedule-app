@@ -628,10 +628,6 @@ function TaskForm({
     setShowCloseConfirm(true);
   };
 
-  const handleSaveClick = () => {
-    onSave(draft);
-  };
-
   return (
     <form onSubmit={(e) => { e.preventDefault(); onSave(draft); }} className="min-h-screen bg-slate-100 p-6">
       <div className="mx-auto max-w-7xl rounded-3xl bg-white shadow-xl">

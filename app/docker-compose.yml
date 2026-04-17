@@ -1,0 +1,32 @@
+version: '3.9'
+
+services:
+  app:
+    build: .
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      SAVED_DATA_DATABASE_URL: ${SAVED_DATA_DATABASE_URL}
+      AUTH_USERNAME: ${AUTH_USERNAME}
+      AUTH_PASSWORD: ${AUTH_PASSWORD}
+      AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET}
+      AUTH_SESSION_MAX_AGE: ${AUTH_SESSION_MAX_AGE:-86400}
+      AUTH_SESSION_SECURE: ${AUTH_SESSION_SECURE:-true}
+      LOCK_MINUTES: ${LOCK_MINUTES:-5}
+    depends_on:
+      - db
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: schedule_db
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+volumes:
+  db-data:
