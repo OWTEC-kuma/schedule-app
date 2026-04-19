@@ -46,33 +46,10 @@ This app now requires login before accessing the main schedule UI. Use the crede
   - HTTPS 本番環境では `true` にしてください。
   - ローカル HTTP で動かす場合は `false` に設定します。
 - `LOCK_MINUTES` - プロジェクト編集ロックタイムアウト（分）
-- `LINE_CHANNEL_SECRET` - LINE Messaging API のチャネルシークレット
-- `LINE_CHANNEL_ACCESS_TOKEN` - LINE bot のチャネルアクセストークン
-- `LINE_API_TOKEN` - LINE webhook や社内 API からの認証に使うシークレットトークン
-- `INTERNAL_API_BASE_URL` - Vercel で動かす webhook からアクセスする内部 API の公開 URL
-  - 例: `https://my-internal-tunnel.example.com`
-  - ローカルアプリを非公開にしたい場合は、Cloudflare Tunnel / ngrok などで `/api/projects` を保護された URL に公開し、ここに設定します。
-- `INTERNAL_API_TOKEN` - `INTERNAL_API_BASE_URL` 経由で内部 API にアクセスするための Bearer トークン
-  - この値を設定しない場合は `LINE_API_TOKEN` が内部 API 認証に使われます。
-- `OPENAI_API_KEY` - ChatGPT 連携に利用する OpenAI API キー（不要な場合は空のままでも可）
 
 > 本番では `AUTH_SESSION_SECRET` を必ず強いランダム値にして、公開リポジトリやログに含めないでください。
 
 > 本番運用では、`NODE_ENV=production` と HTTPS を使い、`AUTH_SESSION_SECURE=true` にしておくことを推奨します。
-
-### LINE webhook を Vercel で外部公開し、内部 API はプライベートに保つ
-
-このアプリでは、次の2つのパターンが考えられます。
-
-1. アプリ全体を Vercel にデプロイし、Webhook も同じデプロイ先で動かす。
-   - `INTERNAL_API_BASE_URL` を設定しなければ、Webhook は同じ Vercel アプリ内の `/api` を呼び出します。
-   - この場合、内部 API は Vercel から直接アクセスできるため、内部アプリは Vercel 側で公開されます。
-2. LINE webhook は Vercel、社内アプリはプライベートネットワーク内に残し、内部 API だけを安全なトンネル経由で公開する。
-   - `INTERNAL_API_BASE_URL` にトンネル URL を設定します。
-   - `INTERNAL_API_TOKEN` を必ず設定し、Vercel 側の webhook からのアクセスを Bearer トークンで保護します。
-   - ローカル側では `LINE_API_TOKEN` または `INTERNAL_API_TOKEN` を使って `/api/projects` と `/api/projects/next-delivery` の呼び出しを認証します。
-
-推奨: 社内アプリを公開せずに LINE webhook を安定運用したい場合は、Cloudflare Tunnel や ngrok などで内部 API のみを公開して `INTERNAL_API_BASE_URL` を指す構成にしてください。
 
 ### デプロイ準備
 
@@ -143,9 +120,3 @@ To learn more about Next.js, take a look at the following resources:
 - [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
